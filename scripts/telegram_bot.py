@@ -1,5 +1,5 @@
 """
-Шаг 5: Telegram-бот — уведомление при заказе на сумму > 50 000 ₸
+Шаг 5: Telegram-бот — уведомление при заказе на сумму > 50 000 ₽
 Принцип: поллинг RetailCRM каждые 60 сек, сравниваем с уже отправленными.
 Запуск: python scripts/telegram_bot.py
 """
@@ -17,8 +17,15 @@ RETAILCRM_KEY  = os.getenv("RETAILCRM_KEY",  "Tyz5iPvsWyIKYbTd5nTJhR98HzNrOnDb")
 TG_BOT_TOKEN   = os.getenv("TG_BOT_TOKEN",   "8237392640:AAHAB7mnR-7GIiwZgIAcnnDdXuX_1h84umM")
 TG_CHAT_ID     = os.getenv("TG_CHAT_ID",     "-1003969063295")
 THRESHOLD      = float(os.getenv("ORDER_THRESHOLD", "50000"))
-POLL_INTERVAL  = int(os.getenv("POLL_INTERVAL", "60"))   # секунды
+POLL_INTERVAL  = int(os.getenv("POLL_INTERVAL", "60"))
 SEEN_FILE      = os.path.join(os.path.dirname(__file__), ".seen_orders.json")
+
+STATUS_LABELS = {
+    "new":           "Новый",
+    "in-processing": "В работе",
+    "complete":      "Выполнен",
+    "offer-analog":  "Новый",
+}
 
 def load_seen():
     if os.path.exists(SEEN_FILE):
@@ -40,16 +47,15 @@ def send_telegram(message: str):
     return resp.json()
 
 def fetch_recent_orders(minutes_back=5):
-    """Забираем заказы за последние N минут."""
     since = (datetime.now(timezone.utc) - timedelta(minutes=minutes_back)).strftime(
         "%Y-%m-%d %H:%M:%S"
     )
     resp = requests.get(
         f"{RETAILCRM_URL}/api/v5/orders",
         params={
-            "apiKey":              RETAILCRM_KEY,
+            "apiKey":                RETAILCRM_KEY,
             "filter[createdAtFrom]": since,
-            "limit":               100,
+            "limit":                 100,
         },
     )
     data = resp.json()
@@ -65,33 +71,37 @@ def format_notification(order) -> str:
     phones   = customer.get("phones", [])
     phone    = phones[0].get("number", "") if phones else "—"
 
-    items    = order.get("items", [])
-    items_str = "\n".join(
-        f"  • {i.get('productName','?')} × {i.get('quantity',1)} = {i.get('initialPrice',0):,} ₸"
-        for i in items
-    ) or "  —"
+    items = order.get("items", [])
+    items_list = []
+    for i in items:
+        offer = i.get("offer") or {}
+        name  = offer.get("name") or i.get("productName") or "Товар"
+        qty   = i.get("quantity", 1)
+        price = float(i.get("initialPrice") or i.get("price") or 0)
+        items_list.append(f"  • {name} x {qty} = {price:,.0f} руб.")
+    items_str = "\n".join(items_list) or "  —"
 
-    total = float(order.get("totalSumm", 0))
+    total  = float(order.get("totalSumm", 0))
+    status = STATUS_LABELS.get(order.get("status", ""), order.get("status", "—"))
 
     return (
         f"🔔 <b>Крупный заказ!</b>\n\n"
-        f"📦 <b>Заказ:</b> {order.get('number','—')}\n"
+        f"📦 <b>Заказ:</b> {order.get('number', '—')}\n"
         f"👤 <b>Клиент:</b> {first} {last}\n"
         f"📱 <b>Телефон:</b> {phone}\n"
-        f"💰 <b>Сумма:</b> <b>{total:,.0f} ₸</b>\n"
-        f"📊 <b>Статус:</b> {order.get('status','—')}\n\n"
+        f"💰 <b>Сумма:</b> <b>{total:,.0f} руб.</b>\n"
+        f"📊 <b>Статус:</b> {status}\n\n"
         f"🛍 <b>Состав:</b>\n{items_str}\n\n"
         f"🕐 {datetime.now().strftime('%d.%m.%Y %H:%M')}"
     )
 
 def main():
-    print(f"Telegram-бот запущен. Порог: {THRESHOLD:,.0f} ₸")
+    print(f"GBC Dashboard Bot запущен. Порог: {THRESHOLD:,.0f} руб.")
     print(f"Интервал опроса: {POLL_INTERVAL} сек\n")
 
-    # Тестовое сообщение при старте
     send_telegram(
-        f"✅ <b>GBC Bot запущен</b>\n"
-        f"Слежу за заказами > {THRESHOLD:,.0f} ₸"
+        f"✅ <b>GBC Dashboard Bot запущен</b>\n"
+        f"Слежу за заказами &gt; {THRESHOLD:,.0f} руб."
     )
 
     seen = load_seen()
@@ -113,7 +123,7 @@ def main():
                     msg = format_notification(order)
                     result = send_telegram(msg)
                     if result.get("ok"):
-                        print(f"✓ Уведомление отправлено: заказ {order.get('number')} — {total:,.0f} ₸")
+                        print(f"✓ Уведомление: заказ {order.get('number')} — {total:,.0f} руб.")
                     else:
                         print(f"✗ Ошибка Telegram: {result}")
 
