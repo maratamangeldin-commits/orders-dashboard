@@ -90,7 +90,7 @@ def main():
 
     # Тестовое сообщение при старте
     send_telegram(
-        f"✅ <b>Modefica Dashboard Bot запущен</b>\n"
+        f"✅ <b>GBC Bot запущен</b>\n"
         f"Слежу за заказами > {THRESHOLD:,.0f} ₸"
     )
 
