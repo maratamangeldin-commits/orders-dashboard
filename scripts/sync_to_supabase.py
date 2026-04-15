@@ -8,6 +8,8 @@ import json
 import requests
 import os
 from datetime import datetime
+from dotenv import load_dotenv
+load_dotenv()
 
 RETAILCRM_URL  = os.getenv("RETAILCRM_URL", "https://maratamangeldin.retailcrm.ru")
 RETAILCRM_KEY  = os.getenv("RETAILCRM_KEY", "Tyz5iPvsWyIKYbTd5nTJhR98HzNrOnDb")
