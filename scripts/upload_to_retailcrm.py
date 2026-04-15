@@ -8,6 +8,7 @@ import requests
 import time
 import os
 from datetime import datetime
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -17,7 +18,7 @@ ORDERS_FILE   = os.path.join(os.path.dirname(__file__), "..", "mock_orders.json"
 
 STATUS_MAP = {
     "new":        "new",
-    "processing": "in-processing",
+    "processing": "new",
     "complete":   "complete",
 }
 
@@ -65,7 +66,7 @@ def create_order(order, customer_id):
         "number":    order["number"],
         "externalId": str(order["id"]),
         "status":    STATUS_MAP.get(order["status"], "new"),
-        "createdAt": order["createdAt"],
+        "createdAt": datetime.fromisoformat(order["createdAt"]).strftime("%Y-%m-%d %H:%M:%S"),
         "totalSumm": order["totalSumm"],
         "customer":  {"id": customer_id} if customer_id else {
             "firstName": order["customer"]["firstName"],

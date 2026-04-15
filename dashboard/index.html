@@ -243,7 +243,18 @@
 <script>
 const SUPABASE_URL = "https://kwhaxppswuezfngowwur.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt3aGF4cHBzd3VlemZuZ293d3VyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNjQ2OTEsImV4cCI6MjA5MTc0MDY5MX0.STFRpfPiXx0bbH1xrpVGSKSYgZR7J6GPdMMAQdhGTW8";
-const THRESHOLD    = 50000;
+const THRESHOLD = 50000;
+
+// Храним экземпляры графиков чтобы уничтожать перед пересозданием
+let chartDaily  = null;
+let chartStatus = null;
+
+const STATUS_LABELS = {
+  new:              "Новый",
+  "in-processing":  "В работе",
+  processing:       "В работе",
+  complete:         "Выполнен",
+};
 
 async function fetchOrders() {
   const res = await fetch(
@@ -267,10 +278,10 @@ function formatDate(iso) {
 
 function statusBadge(s) {
   const map = {
-    new:           ["badge-new",        "Новый"],
-    "in-processing":["badge-processing","В работе"],
-    processing:    ["badge-processing", "В работе"],
-    complete:      ["badge-complete",   "Выполнен"],
+    new:             ["badge-new",        "Новый"],
+    "in-processing": ["badge-processing", "В работе"],
+    processing:      ["badge-processing", "В работе"],
+    complete:        ["badge-complete",   "Выполнен"],
   };
   const [cls, label] = map[s] || ["badge-default", s];
   return `<span class="badge ${cls}">${label}</span>`;
@@ -284,22 +295,25 @@ function renderKPI(orders) {
 
   document.getElementById("kpi-total").textContent   = total;
   document.getElementById("kpi-revenue").textContent = formatMoney(revenue);
-  document.getElementById("kpi-avg").textContent     = formatMoney(avg);
+  document.getElementById("kpi-avg").textContent     = formatMoney(Math.round(avg));
   document.getElementById("kpi-big").textContent     = big;
 }
 
 function renderCharts(orders) {
-  // Daily orders chart
+  // Уничтожаем старые графики перед пересозданием
+  if (chartDaily)  { chartDaily.destroy();  chartDaily  = null; }
+  if (chartStatus) { chartStatus.destroy(); chartStatus = null; }
+
+  // --- График по дням ---
   const byDay = {};
   orders.forEach(o => {
     const day = (o.created_at || "").slice(0, 10);
     if (day) byDay[day] = (byDay[day] || 0) + 1;
   });
-  const days    = Object.keys(byDay).sort();
+  const days      = Object.keys(byDay).sort();
   const dayCounts = days.map(d => byDay[d]);
 
-  const ctxDaily = document.getElementById("chart-daily").getContext("2d");
-  new Chart(ctxDaily, {
+  chartDaily = new Chart(document.getElementById("chart-daily").getContext("2d"), {
     type: "bar",
     data: {
       labels: days.map(d => d.slice(5)),
@@ -322,19 +336,26 @@ function renderCharts(orders) {
     },
   });
 
-  // Status donut
+  // --- Donut статусов ---
+  // Группируем new + processing вместе как "Новый/В работе"
   const statusCounts = {};
-  orders.forEach(o => { statusCounts[o.status] = (statusCounts[o.status] || 0) + 1; });
-  const statusLabels = { new: "Новый", "in-processing": "В работе", processing: "В работе", complete: "Выполнен" };
+  orders.forEach(o => {
+    const label = STATUS_LABELS[o.status] || o.status;
+    statusCounts[label] = (statusCounts[label] || 0) + 1;
+  });
 
-  const ctxStatus = document.getElementById("chart-status").getContext("2d");
-  new Chart(ctxStatus, {
+  chartStatus = new Chart(document.getElementById("chart-status").getContext("2d"), {
     type: "doughnut",
     data: {
-      labels: Object.keys(statusCounts).map(k => statusLabels[k] || k),
+      labels: Object.keys(statusCounts),
       datasets: [{
         data: Object.values(statusCounts),
-        backgroundColor: ["rgba(108,99,255,0.7)","rgba(255,193,7,0.7)","rgba(0,201,167,0.7)","rgba(255,107,107,0.7)"],
+        backgroundColor: [
+          "rgba(108,99,255,0.7)",
+          "rgba(255,193,7,0.7)",
+          "rgba(0,201,167,0.7)",
+          "rgba(255,107,107,0.7)",
+        ],
         borderColor: "#1a1d27",
         borderWidth: 3,
       }],
@@ -342,7 +363,10 @@ function renderCharts(orders) {
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: {
-        legend: { position: "bottom", labels: { color: "#8892a4", font: { size: 12 }, padding: 12 } },
+        legend: {
+          position: "bottom",
+          labels: { color: "#8892a4", font: { size: 12 }, padding: 12 },
+        },
       },
     },
   });
@@ -353,7 +377,7 @@ function renderTable(orders) {
 
   if (!orders.length) {
     document.getElementById("table-body").innerHTML =
-      '<div class="loading">Заказов пока нет. Запусти upload_to_retailcrm.py и sync_to_supabase.py</div>';
+      '<div class="loading">Заказов пока нет.</div>';
     return;
   }
 
@@ -389,6 +413,7 @@ async function init() {
       `Supabase подключён · ${orders.length} заказов загружено`;
     document.getElementById("last-updated").textContent =
       "Обновлено: " + new Date().toLocaleTimeString("ru-RU");
+    document.querySelector(".dot").style.background = "var(--accent2)";
 
     renderKPI(orders);
     renderCharts(orders);
@@ -397,14 +422,6 @@ async function init() {
   } catch (err) {
     document.getElementById("status-text").textContent = "Ошибка подключения";
     document.querySelector(".dot").style.background = "var(--warn)";
-    document.getElementById("table-body").innerHTML =
-      `<div class="error-msg">
-        Ошибка загрузки данных: ${err.message}<br><br>
-        Убедись что:<br>
-        1. Таблица <code>orders</code> создана в Supabase<br>
-        2. Скрипт <code>sync_to_supabase.py</code> был запущен<br>
-        3. RLS в Supabase отключён или настроен для anon-доступа
-      </div>`;
     console.error(err);
   }
 }
