@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Modefica — Dashboard заказов</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0f1117;
+      --surface: #1a1d27;
+      --border:  #2a2d3e;
+      --accent:  #6c63ff;
+      --accent2: #00c9a7;
+      --warn:    #ff6b6b;
+      --text:    #e2e8f0;
+      --muted:   #8892a4;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      padding: 0 0 40px;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 20px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
+    .logo span { color: var(--accent); }
+    .header-meta { font-size: 13px; color: var(--muted); }
+
+    /* ── Layout ── */
+    main { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+
+    /* ── Status bar ── */
+    #status-bar {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 20px;
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 28px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent2); flex-shrink: 0;
+           animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    /* ── KPI Cards ── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .kpi-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 24px;
+    }
+    .kpi-label { font-size: 12px; color: var(--muted); text-transform: uppercase;
+                 letter-spacing: 0.06em; margin-bottom: 8px; }
+    .kpi-value { font-size: 28px; font-weight: 700; letter-spacing: -1px; }
+    .kpi-sub   { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .kpi-card.accent  { border-color: var(--accent);  }
+    .kpi-card.accent2 { border-color: var(--accent2); }
+    .kpi-card.warn    { border-color: var(--warn);    }
+
+    /* ── Charts row ── */
+    .charts-row {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    @media (max-width: 700px) { .charts-row { grid-template-columns: 1fr; } }
+
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+    }
+    .chart-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      color: var(--text);
+    }
+    .chart-wrap { position: relative; height: 220px; }
+
+    /* ── Orders table ── */
+    .table-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .table-header {
+      padding: 20px 24px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .table-title { font-size: 14px; font-weight: 600; }
+    .table-count { font-size: 12px; color: var(--muted); }
+
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      padding: 12px 16px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 13px 16px;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border);
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(108,99,255,0.05); }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-new        { background: rgba(108,99,255,0.15); color: #a89fff; }
+    .badge-processing { background: rgba(255,193,7,0.15);  color: #ffd54f; }
+    .badge-complete   { background: rgba(0,201,167,0.15);  color: #4ecdc4; }
+    .badge-default    { background: rgba(136,146,164,0.15);color: var(--muted); }
+
+    .big-order { color: var(--warn); font-weight: 700; }
+    .loading {
+      text-align: center;
+      padding: 60px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .error-msg {
+      background: rgba(255,107,107,0.1);
+      border: 1px solid rgba(255,107,107,0.3);
+      border-radius: 8px;
+      padding: 16px 20px;
+      font-size: 13px;
+      color: var(--warn);
+      margin: 16px 0;
+    }
+
+    /* responsive table scroll */
+    .table-scroll { overflow-x: auto; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Mode<span>fica</span> Orders</div>
+  <div class="header-meta" id="last-updated">Загрузка...</div>
+</header>
+
+<main>
+  <div id="status-bar">
+    <div class="dot"></div>
+    <span id="status-text">Подключаемся к Supabase...</span>
+  </div>
+
+  <!-- KPI -->
+  <div class="kpi-grid">
+    <div class="kpi-card accent">
+      <div class="kpi-label">Всего заказов</div>
+      <div class="kpi-value" id="kpi-total">—</div>
+      <div class="kpi-sub">за всё время</div>
+    </div>
+    <div class="kpi-card accent2">
+      <div class="kpi-label">Общая выручка</div>
+      <div class="kpi-value" id="kpi-revenue">—</div>
+      <div class="kpi-sub">сумма всех заказов</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Средний чек</div>
+      <div class="kpi-value" id="kpi-avg">—</div>
+      <div class="kpi-sub">средняя сумма заказа</div>
+    </div>
+    <div class="kpi-card warn">
+      <div class="kpi-label">Крупных заказов</div>
+      <div class="kpi-value" id="kpi-big">—</div>
+      <div class="kpi-sub">> 50 000 ₸</div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="charts-row">
+    <div class="chart-card">
+      <div class="chart-title">Заказы по дням</div>
+      <div class="chart-wrap">
+        <canvas id="chart-daily"></canvas>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Статусы</div>
+      <div class="chart-wrap">
+        <canvas id="chart-status"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="table-card">
+    <div class="table-header">
+      <div class="table-title">Все заказы</div>
+      <div class="table-count" id="table-count"></div>
+    </div>
+    <div class="table-scroll">
+      <div id="table-body">
+        <div class="loading">Загружаем заказы...</div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+const SUPABASE_URL = "https://kwhaxppswuezfngowwur.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt3aGF4cHBzd3VlemZuZ293d3VyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNjQ2OTEsImV4cCI6MjA5MTc0MDY5MX0.STFRpfPiXx0bbH1xrpVGSKSYgZR7J6GPdMMAQdhGTW8";
+const THRESHOLD    = 50000;
+
+async function fetchOrders() {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/orders?select=*&order=created_at.desc&limit=200`,
+    { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+  );
+  if (!res.ok) throw new Error(`Supabase: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+function formatMoney(n) {
+  return new Intl.NumberFormat("ru-KZ", { maximumFractionDigits: 0 }).format(n) + " ₸";
+}
+
+function formatDate(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit" })
+       + " " + d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+}
+
+function statusBadge(s) {
+  const map = {
+    new:           ["badge-new",        "Новый"],
+    "in-processing":["badge-processing","В работе"],
+    processing:    ["badge-processing", "В работе"],
+    complete:      ["badge-complete",   "Выполнен"],
+  };
+  const [cls, label] = map[s] || ["badge-default", s];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function renderKPI(orders) {
+  const total   = orders.length;
+  const revenue = orders.reduce((s, o) => s + (o.total_summ || 0), 0);
+  const avg     = total ? revenue / total : 0;
+  const big     = orders.filter(o => (o.total_summ || 0) >= THRESHOLD).length;
+
+  document.getElementById("kpi-total").textContent   = total;
+  document.getElementById("kpi-revenue").textContent = formatMoney(revenue);
+  document.getElementById("kpi-avg").textContent     = formatMoney(avg);
+  document.getElementById("kpi-big").textContent     = big;
+}
+
+function renderCharts(orders) {
+  // Daily orders chart
+  const byDay = {};
+  orders.forEach(o => {
+    const day = (o.created_at || "").slice(0, 10);
+    if (day) byDay[day] = (byDay[day] || 0) + 1;
+  });
+  const days    = Object.keys(byDay).sort();
+  const dayCounts = days.map(d => byDay[d]);
+
+  const ctxDaily = document.getElementById("chart-daily").getContext("2d");
+  new Chart(ctxDaily, {
+    type: "bar",
+    data: {
+      labels: days.map(d => d.slice(5)),
+      datasets: [{
+        label: "Заказов",
+        data: dayCounts,
+        backgroundColor: "rgba(108,99,255,0.6)",
+        borderColor:     "rgba(108,99,255,1)",
+        borderWidth: 1,
+        borderRadius: 4,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: "#8892a4", font: { size: 11 } }, grid: { color: "#2a2d3e" } },
+        y: { ticks: { color: "#8892a4", font: { size: 11 } }, grid: { color: "#2a2d3e" }, beginAtZero: true },
+      },
+    },
+  });
+
+  // Status donut
+  const statusCounts = {};
+  orders.forEach(o => { statusCounts[o.status] = (statusCounts[o.status] || 0) + 1; });
+  const statusLabels = { new: "Новый", "in-processing": "В работе", processing: "В работе", complete: "Выполнен" };
+
+  const ctxStatus = document.getElementById("chart-status").getContext("2d");
+  new Chart(ctxStatus, {
+    type: "doughnut",
+    data: {
+      labels: Object.keys(statusCounts).map(k => statusLabels[k] || k),
+      datasets: [{
+        data: Object.values(statusCounts),
+        backgroundColor: ["rgba(108,99,255,0.7)","rgba(255,193,7,0.7)","rgba(0,201,167,0.7)","rgba(255,107,107,0.7)"],
+        borderColor: "#1a1d27",
+        borderWidth: 3,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: "bottom", labels: { color: "#8892a4", font: { size: 12 }, padding: 12 } },
+      },
+    },
+  });
+}
+
+function renderTable(orders) {
+  document.getElementById("table-count").textContent = `${orders.length} заказов`;
+
+  if (!orders.length) {
+    document.getElementById("table-body").innerHTML =
+      '<div class="loading">Заказов пока нет. Запусти upload_to_retailcrm.py и sync_to_supabase.py</div>';
+    return;
+  }
+
+  const rows = orders.map(o => {
+    const isBig = (o.total_summ || 0) >= THRESHOLD;
+    return `<tr>
+      <td>${o.number || "—"}</td>
+      <td>${o.customer_name || "—"}</td>
+      <td class="${isBig ? "big-order" : ""}">${formatMoney(o.total_summ || 0)}</td>
+      <td>${statusBadge(o.status)}</td>
+      <td>${formatDate(o.created_at)}</td>
+      <td style="color:var(--muted);font-size:12px">${o.customer_phone || "—"}</td>
+    </tr>`;
+  }).join("");
+
+  document.getElementById("table-body").innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Номер</th><th>Клиент</th><th>Сумма</th>
+          <th>Статус</th><th>Дата</th><th>Телефон</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+async function init() {
+  try {
+    const orders = await fetchOrders();
+
+    document.getElementById("status-text").textContent =
+      `Supabase подключён · ${orders.length} заказов загружено`;
+    document.getElementById("last-updated").textContent =
+      "Обновлено: " + new Date().toLocaleTimeString("ru-RU");
+
+    renderKPI(orders);
+    renderCharts(orders);
+    renderTable(orders);
+
+  } catch (err) {
+    document.getElementById("status-text").textContent = "Ошибка подключения";
+    document.querySelector(".dot").style.background = "var(--warn)";
+    document.getElementById("table-body").innerHTML =
+      `<div class="error-msg">
+        Ошибка загрузки данных: ${err.message}<br><br>
+        Убедись что:<br>
+        1. Таблица <code>orders</code> создана в Supabase<br>
+        2. Скрипт <code>sync_to_supabase.py</code> был запущен<br>
+        3. RLS в Supabase отключён или настроен для anon-доступа
+      </div>`;
+    console.error(err);
+  }
+}
+
+init();
+// Автообновление каждые 60 сек
+setInterval(init, 60000);
+</script>
+</body>
+</html>
